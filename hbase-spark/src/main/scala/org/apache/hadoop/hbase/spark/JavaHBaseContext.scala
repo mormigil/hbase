@@ -288,6 +288,35 @@ class JavaHBaseContext(@transient jsc: JavaSparkContext,
       (t: T) => makeGet.call(t),
       (r: Result) => convertResult.call(r))(fakeClassTag[U]))(fakeClassTag[U])
   }
+  
+  /**
+   * A simple abstraction over the HBaseContext.mapPartition method.
+   *
+   * It allows additional support for a user to take a JavaRDD and generates a
+   * new RDD based on Scans and the results they bring back from HBase
+   *
+   * @param tableName     The name of the table to scan
+   * @param javaRdd       Original JavaRDD with data to iterate over
+   * @param makeScan       Function to convert a value in the JavaRDD to a
+   *                      HBase Scan
+   * @param convertResult This will convert the HBase Result iterator to
+   *                      what ever the user wants to put in the resulting
+   *                      JavaRDD
+   * @return              New JavaRDD that is created by the Scan to HBase
+   */
+  def bulkScan[T, U](tableName: TableName,
+                    javaRdd: JavaRDD[T],
+                    makeScan: Function[T, Scan],
+                    convertResult: Function[Iterator[Result], U]): JavaRDD[U] = {
+
+    JavaRDD.fromRDD(hbaseContext.bulkScan[T, U](tableName,
+      javaRdd.rdd,
+      (t: T) => makeScan.call(t),
+      (r: Iterator[Result]) => {
+        convertResult.call(r)
+      })(fakeClassTag[U]))(fakeClassTag[U])
+
+  }
 
   /**
    * This function will use the native HBase TableInputFormat with the

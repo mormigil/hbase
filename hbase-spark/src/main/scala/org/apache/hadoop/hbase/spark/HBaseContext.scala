@@ -47,6 +47,7 @@ import org.apache.hadoop.security.UserGroupInformation
 import org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod
 import org.apache.hadoop.fs.{Path, FileSystem}
 import scala.collection.mutable
+import scala.collection.JavaConverters._
 
 /**
   * HBaseContext is a façade for HBase operations
@@ -420,6 +421,38 @@ class HBaseContext(@transient sc: SparkContext,
       it,
       getMapPartition.run))
   }
+  
+  /**
+   * A simple abstraction over the HBaseContext.mapPartition method.
+   *
+   * It allow additional support for a user to take a RDD and generates a
+   * new RDD based on Scans and the results they bring back from HBase
+   *
+   * @param rdd     Original RDD with data to iterate over
+   * @param tableName        The name of the table to get from
+   * @param makeScan    function to convert a value in the RDD to a
+   *                   HBase Scan
+   * @param convertResult This will convert the HBase Result iterator to
+   *                   what ever the user wants to put in the resulting
+   *                   RDD
+   * return            new RDD that is created by the Scan to HBase
+   */
+  def bulkScan[T, U: ClassTag](tableName: TableName,
+                    rdd: RDD[T],
+                    makeScan: (T) => Scan,
+                    convertResult: (Iterator[Result]) => U): RDD[U] = {
+
+    val scanMapPartition = new ScanMapPartition(tableName,
+      makeScan,
+      convertResult)
+
+    rdd.mapPartitions[U](it =>
+      hbaseMapPartition[T, U](
+        broadcastedConf,
+        it,
+        scanMapPartition.run))
+  }
+
 
   /**
    * This function will use the native HBase TableInputFormat with the
@@ -523,10 +556,7 @@ class HBaseContext(@transient sc: SparkContext,
 
   }
 
-  /**
-   *  underlining wrapper all get mapPartition functions in HBaseContext
-   */
-  private class GetMapPartition[T, U](tableName: TableName,
+   private class GetMapPartition[T, U](tableName: TableName,
                                       batchSize: Integer,
                                       makeGet: (T) => Get,
                                       convertResult: (Result) => U)
@@ -559,6 +589,29 @@ class HBaseContext(@transient sc: SparkContext,
     }
   }
 
+   private class ScanMapPartition[T, U](tableName: TableName,
+                                      makeScan: (T) => Scan,
+                                      convertResult: (Iterator[Result]) => U)
+    extends Serializable {
+
+    val tName = tableName.getName
+
+    def run(iterator: Iterator[T], connection: Connection): Iterator[U] = {
+      val table = connection.getTable(TableName.valueOf(tName))
+
+      var res = List[U]()
+
+      while (iterator.hasNext) {
+        var scan = makeScan(iterator.next())
+
+        var results = table.getScanner(scan).iterator.asScala
+        res = res :+ convertResult(results)
+      }
+      table.close()
+      res.iterator
+    }
+  }
+   
   /**
    * Produces a ClassTag[T], which is actually just a casted ClassTag[AnyRef].
    *
