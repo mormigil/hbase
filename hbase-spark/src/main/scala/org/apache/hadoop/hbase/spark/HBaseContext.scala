@@ -29,6 +29,7 @@ import org.apache.hadoop.hbase.io.encoding.DataBlockEncoding
 import org.apache.hadoop.hbase.io.hfile.{CacheConfig, HFileContextBuilder, HFileWriterImpl}
 import org.apache.hadoop.hbase.regionserver.{HStore, StoreFile, BloomType}
 import org.apache.hadoop.hbase.util.Bytes
+import org.apache.hadoop.mapred.JobConf
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.rdd.RDD
@@ -229,7 +230,7 @@ class HBaseContext(@transient sc: SparkContext,
         }))
   }
 
-  def applyCreds[T] (configBroadcast: Broadcast[SerializableWritable[Configuration]]){
+  def applyCreds[T] (){
     credentials = SparkHadoopUtil.get.getCurrentUserCredentials()
 
     logDebug("appliedCredentials:" + appliedCredentials + ",credentials:" + credentials)
@@ -473,10 +474,14 @@ class HBaseContext(@transient sc: SparkContext,
     TableMapReduceUtil.initTableMapperJob(tableName, scan,
       classOf[IdentityTableMapper], null, null, job)
 
-    sc.newAPIHadoopRDD(job.getConfiguration,
+    val jconf = new JobConf(job.getConfiguration)
+    SparkHadoopUtil.get.addCredentials(jconf)
+    new NewHBaseRDD(sc,
       classOf[TableInputFormat],
       classOf[ImmutableBytesWritable],
-      classOf[Result]).map(f)
+      classOf[Result],
+      job.getConfiguration,
+      this).map(f)
   }
 
   /**
@@ -507,7 +512,7 @@ class HBaseContext(@transient sc: SparkContext,
 
     val config = getConf(configBroadcast)
 
-    applyCreds(configBroadcast)
+    applyCreds
     // specify that this is a proxy user
     val connection = ConnectionFactory.createConnection(config)
     f(it, connection)
@@ -547,7 +552,7 @@ class HBaseContext(@transient sc: SparkContext,
                                          Iterator[U]): Iterator[U] = {
 
     val config = getConf(configBroadcast)
-    applyCreds(configBroadcast)
+    applyCreds
 
     val connection = ConnectionFactory.createConnection(config)
     val res = mp(it, connection)

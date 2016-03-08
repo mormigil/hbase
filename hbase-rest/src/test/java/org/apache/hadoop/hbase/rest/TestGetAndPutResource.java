@@ -24,7 +24,10 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.net.URLEncoder;
+import java.util.Dictionary;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import javax.xml.bind.JAXBException;
 
@@ -128,6 +131,125 @@ public class TestGetAndPutResource extends RowResourceBase {
     assertEquals(response.getCode(), 200);
   }
 
+  @Test
+  public void testMultipleCellCheckPutPB() throws IOException, JAXBException {
+    Response response = getValuePB(TABLE, ROW_1, COLUMN_1);
+    assertEquals(response.getCode(), 404);
+
+    // Add 2 Columns to setup the test
+    response = putValuePB(TABLE, ROW_1, COLUMN_1, VALUE_1);
+    assertEquals(response.getCode(), 200);
+    checkValuePB(TABLE, ROW_1, COLUMN_1, VALUE_1);
+
+    response = putValuePB(TABLE, ROW_1, COLUMN_2, VALUE_2);
+    assertEquals(response.getCode(), 200);
+    checkValuePB(TABLE, ROW_1, COLUMN_2, VALUE_2);
+
+    HashMap<String,String> otherCells = new HashMap<String, String>();
+    otherCells.put(COLUMN_2,VALUE_3);
+
+    // On Success update both the cells
+    response = checkAndPutValuePB(TABLE, ROW_1, COLUMN_1, VALUE_1, VALUE_3, otherCells);
+    assertEquals(response.getCode(), 200);
+    checkValuePB(TABLE, ROW_1, COLUMN_1, VALUE_3);
+    checkValuePB(TABLE, ROW_1, COLUMN_2, VALUE_3);
+
+    // On Failure, we dont update any cells
+    response = checkAndPutValuePB(TABLE, ROW_1, COLUMN_1, VALUE_1, VALUE_4, otherCells);
+    assertEquals(response.getCode(), 304);
+    checkValuePB(TABLE, ROW_1, COLUMN_1, VALUE_3);
+    checkValuePB(TABLE, ROW_1, COLUMN_2, VALUE_3);
+
+    response = deleteRow(TABLE, ROW_1);
+    assertEquals(response.getCode(), 200);
+  }
+
+  @Test
+  public void testMultipleCellCheckPutXML() throws IOException, JAXBException {
+    Response response = getValuePB(TABLE, ROW_1, COLUMN_1);
+    assertEquals(response.getCode(), 404);
+
+    // Add 2 Columns to setup the test
+    response = putValueXML(TABLE, ROW_1, COLUMN_1, VALUE_1);
+    assertEquals(response.getCode(), 200);
+    checkValueXML(TABLE, ROW_1, COLUMN_1, VALUE_1);
+
+    response = putValueXML(TABLE, ROW_1, COLUMN_2, VALUE_2);
+    assertEquals(response.getCode(), 200);
+    checkValueXML(TABLE, ROW_1, COLUMN_2, VALUE_2);
+
+    HashMap<String,String> otherCells = new HashMap<String, String>();
+    otherCells.put(COLUMN_2,VALUE_3);
+
+    // On Success update both the cells
+    response = checkAndPutValueXML(TABLE, ROW_1, COLUMN_1, VALUE_1, VALUE_3, otherCells);
+    assertEquals(response.getCode(), 200);
+    checkValueXML(TABLE, ROW_1, COLUMN_1, VALUE_3);
+    checkValueXML(TABLE, ROW_1, COLUMN_2, VALUE_3);
+
+    // On Failure, we dont update any cells
+    response = checkAndPutValueXML(TABLE, ROW_1, COLUMN_1, VALUE_1, VALUE_4, otherCells);
+    assertEquals(response.getCode(), 304);
+    checkValueXML(TABLE, ROW_1, COLUMN_1, VALUE_3);
+    checkValueXML(TABLE, ROW_1, COLUMN_2, VALUE_3);
+
+    response = deleteRow(TABLE, ROW_1);
+    assertEquals(response.getCode(), 200);
+  }
+
+  @Test
+  public void testMultipleCellCheckDeletePB() throws IOException, JAXBException {
+    Response response = getValuePB(TABLE, ROW_1, COLUMN_1);
+    assertEquals(response.getCode(), 404);
+
+    // Add 3 Columns to setup the test
+    response = putValuePB(TABLE, ROW_1, COLUMN_1, VALUE_1);
+    assertEquals(response.getCode(), 200);
+    checkValuePB(TABLE, ROW_1, COLUMN_1, VALUE_1);
+
+    response = putValuePB(TABLE, ROW_1, COLUMN_2, VALUE_2);
+    assertEquals(response.getCode(), 200);
+    checkValuePB(TABLE, ROW_1, COLUMN_2, VALUE_2);
+
+    response = putValuePB(TABLE, ROW_1, COLUMN_3, VALUE_3);
+    assertEquals(response.getCode(), 200);
+    checkValuePB(TABLE, ROW_1, COLUMN_3, VALUE_3);
+
+    // Deletes the following columns based on Column1 check
+    HashMap<String,String> cellsToDelete = new HashMap<String, String>();
+    cellsToDelete.put(COLUMN_2,VALUE_2); // Value does not matter
+    cellsToDelete.put(COLUMN_3,VALUE_3); // Value does not matter
+
+    // On Success update both the cells
+    response = checkAndDeletePB(TABLE, ROW_1, COLUMN_1, VALUE_1, cellsToDelete);
+    assertEquals(response.getCode(), 200);
+
+    checkValuePB(TABLE, ROW_1, COLUMN_1, VALUE_1);
+
+    response = getValuePB(TABLE, ROW_1, COLUMN_2);
+    assertEquals(response.getCode(), 404);
+
+    response = getValuePB(TABLE, ROW_1, COLUMN_3);
+    assertEquals(response.getCode(), 404);
+
+    response = putValuePB(TABLE, ROW_1, COLUMN_2, VALUE_2);
+    assertEquals(response.getCode(), 200);
+    checkValuePB(TABLE, ROW_1, COLUMN_2, VALUE_2);
+
+    response = putValuePB(TABLE, ROW_1, COLUMN_3, VALUE_3);
+    assertEquals(response.getCode(), 200);
+    checkValuePB(TABLE, ROW_1, COLUMN_3, VALUE_3);
+
+    // On Failure, we dont update any cells
+    response = checkAndDeletePB(TABLE, ROW_1, COLUMN_1, VALUE_3, cellsToDelete);
+    assertEquals(response.getCode(), 304);
+    checkValuePB(TABLE, ROW_1, COLUMN_1, VALUE_1);
+    checkValuePB(TABLE, ROW_1, COLUMN_2, VALUE_2);
+    checkValuePB(TABLE, ROW_1, COLUMN_3, VALUE_3);
+
+    response = deleteRow(TABLE, ROW_1);
+    assertEquals(response.getCode(), 200);
+  }
   @Test
   public void testSingleCellGetPutBinary() throws IOException {
     final String path = "/" + TABLE + "/" + ROW_3 + "/" + COLUMN_1;

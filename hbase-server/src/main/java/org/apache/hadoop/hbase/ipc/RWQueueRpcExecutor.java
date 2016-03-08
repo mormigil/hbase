@@ -100,6 +100,16 @@ public class RWQueueRpcExecutor extends RpcExecutor {
       readQueueClass, ArrayUtils.addAll(new Object[] {maxQueueLength}, readQueueInitArgs));
   }
 
+  public RWQueueRpcExecutor(final String name, final int handlerCount, final int numQueues,
+      final float readShare, final float scanShare,
+      final Class<? extends BlockingQueue> writeQueueClass, Object[] writeQueueInitArgs,
+      final Class<? extends BlockingQueue> readQueueClass, Object[] readQueueInitArgs) {
+    this(name, calcNumWriters(handlerCount, readShare), calcNumReaders(handlerCount, readShare),
+      calcNumWriters(numQueues, readShare), calcNumReaders(numQueues, readShare), scanShare,
+      writeQueueClass, writeQueueInitArgs,
+      readQueueClass, readQueueInitArgs);
+  }
+
   public RWQueueRpcExecutor(final String name, final int writeHandlers, final int readHandlers,
       final int numWriteQueues, final int numReadQueues,
       final Class<? extends BlockingQueue> writeQueueClass, Object[] writeQueueInitArgs,
@@ -139,12 +149,22 @@ public class RWQueueRpcExecutor extends RpcExecutor {
               " readQueues=" + numReadQueues + " readHandlers=" + readHandlersCount +
               ((numScanQueues == 0) ? "" : " scanQueues=" + numScanQueues +
                 " scanHandlers=" + scanHandlersCount));
-
+    if (writeQueueInitArgs.length > 0) {
+      currentQueueLimit = (int) writeQueueInitArgs[0];
+      writeQueueInitArgs[0] = Math.max((int) writeQueueInitArgs[0],
+        DEFAULT_CALL_QUEUE_SIZE_HARD_LIMIT);
+    }
     for (int i = 0; i < numWriteQueues; ++i) {
+
       queues.add((BlockingQueue<CallRunner>)
         ReflectionUtils.newInstance(writeQueueClass, writeQueueInitArgs));
     }
 
+    if (readQueueInitArgs.length > 0) {
+      currentQueueLimit = (int) readQueueInitArgs[0];
+      readQueueInitArgs[0] = Math.max((int) readQueueInitArgs[0],
+        DEFAULT_CALL_QUEUE_SIZE_HARD_LIMIT);
+    }
     for (int i = 0; i < (numReadQueues + numScanQueues); ++i) {
       queues.add((BlockingQueue<CallRunner>)
         ReflectionUtils.newInstance(readQueueClass, readQueueInitArgs));
@@ -170,7 +190,12 @@ public class RWQueueRpcExecutor extends RpcExecutor {
     } else {
       queueIndex = numWriteQueues + readBalancer.getNextQueue();
     }
-    return queues.get(queueIndex).offer(callTask);
+
+    BlockingQueue<CallRunner> queue = queues.get(queueIndex);
+    if (queue.size() >= currentQueueLimit) {
+      return false;
+    }
+    return queue.offer(callTask);
   }
 
   private boolean isWriteRequest(final RequestHeader header, final Message param) {

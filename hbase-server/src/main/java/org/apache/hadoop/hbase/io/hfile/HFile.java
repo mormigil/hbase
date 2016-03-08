@@ -34,7 +34,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.hadoop.hbase.util.ByteStringer;
 import org.apache.commons.logging.Log;
@@ -61,6 +60,7 @@ import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos.BytesBytesPair;
 import org.apache.hadoop.hbase.protobuf.generated.HFileProtos;
 import org.apache.hadoop.hbase.util.BloomFilterWriter;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.hadoop.hbase.util.Counter;
 import org.apache.hadoop.hbase.util.FSUtils;
 import org.apache.hadoop.io.Writable;
 
@@ -178,18 +178,21 @@ public class HFile {
    * The number of bytes per checksum.
    */
   public static final int DEFAULT_BYTES_PER_CHECKSUM = 16 * 1024;
-  // For measuring number of checksum failures
-  static final AtomicLong checksumFailures = new AtomicLong();
 
-  // for test purpose
-  public static final AtomicLong dataBlockReadCnt = new AtomicLong(0);
+  // For measuring number of checksum failures
+  static final Counter CHECKSUM_FAILURES = new Counter();
+
+  // For tests. Gets incremented when we read a block whether from HDFS or from Cache.
+  public static final Counter DATABLOCK_READ_COUNT = new Counter();
 
   /**
    * Number of checksum verification failures. It also
    * clears the counter.
    */
   public static final long getChecksumFailuresCount() {
-    return checksumFailures.getAndSet(0);
+    long count = CHECKSUM_FAILURES.get();
+    CHECKSUM_FAILURES.set(0);
+    return count;
   }
 
   /** API required to write an {@link HFile} */

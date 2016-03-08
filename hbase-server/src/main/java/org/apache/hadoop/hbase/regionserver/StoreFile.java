@@ -291,6 +291,13 @@ public class StoreFile {
   }
 
   /**
+   * @return True if this is HFile.
+   */
+  public boolean isHFile() {
+    return this.fileInfo.isHFile(this.fileInfo.getPath());
+  }
+
+  /**
    * @return True if this file was made by a major compaction.
    */
   public boolean isMajorCompaction() {
@@ -760,6 +767,13 @@ public class StoreFile {
         null :
         getReader().timeRangeTracker.getMinimumTimestamp();
   }
+
+  public Long getMaximumTimestamp() {
+    return (getReader().timeRangeTracker == null) ?
+        null :
+        getReader().timeRangeTracker.getMaximumTimestamp();
+  }
+
 
   /**
    * Gets the approximate mid-point of this file that is optimal for use in splitting it.

@@ -346,6 +346,31 @@ public interface Store extends HeapSize, StoreConfigInformation, PropagatingConf
   int getStorefilesCount();
 
   /**
+   * @return Max age of store files in this store
+   */
+  long getMaxStoreFileAge();
+
+  /**
+   * @return Min age of store files in this store
+   */
+  long getMinStoreFileAge();
+
+  /**
+   *  @return Average age of store files in this store, 0 if no store files
+   */
+  long getAvgStoreFileAge();
+
+  /**
+   *  @return Number of reference files in this store
+   */
+  long getNumReferenceFiles();
+
+  /**
+   *  @return Number of HFiles in this store
+   */
+  long getNumHFiles();
+
+  /**
    * @return The size of the store files, in bytes, uncompressed.
    */
   long getStoreSizeUncompressed();
@@ -490,4 +515,12 @@ public interface Store extends HeapSize, StoreConfigInformation, PropagatingConf
    * Closes and archives the compacted files under this store
    */
   void closeAndArchiveCompactedFiles() throws IOException;
+
+  /**
+   * This method is called when it is clear that the flush to disk is completed.
+   * The store may do any post-flush actions at this point.
+   * One example is to update the wal with sequence number that is known only at the store level.
+   */
+  void finalizeFlush();
+
 }

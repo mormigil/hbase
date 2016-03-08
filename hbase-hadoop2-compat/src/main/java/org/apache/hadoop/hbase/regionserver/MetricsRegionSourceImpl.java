@@ -23,11 +23,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
+import org.apache.hadoop.metrics2.MetricHistogram;
 import org.apache.hadoop.metrics2.MetricsRecordBuilder;
 import org.apache.hadoop.metrics2.lib.DynamicMetricsRegistry;
 import org.apache.hadoop.metrics2.lib.Interns;
-import org.apache.hadoop.metrics2.lib.MutableCounterLong;
-import org.apache.hadoop.metrics2.lib.MutableHistogram;
+import org.apache.hadoop.metrics2.lib.MutableFastCounter;
 
 @InterfaceAudience.Private
 public class MetricsRegionSourceImpl implements MetricsRegionSource {
@@ -51,14 +51,16 @@ public class MetricsRegionSourceImpl implements MetricsRegionSource {
   private final String regionGetKey;
   private final String regionIncrementKey;
   private final String regionAppendKey;
-  private final String regionScanNextKey;
+  private final String regionScanSizeKey;
+  private final String regionScanTimeKey;
 
-  private final MutableCounterLong regionPut;
-  private final MutableCounterLong regionDelete;
-  private final MutableCounterLong regionIncrement;
-  private final MutableCounterLong regionAppend;
-  private final MutableHistogram regionGet;
-  private final MutableHistogram regionScanNext;
+  private final MutableFastCounter regionPut;
+  private final MutableFastCounter regionDelete;
+  private final MutableFastCounter regionIncrement;
+  private final MutableFastCounter regionAppend;
+  private final MetricHistogram regionGet;
+  private final MetricHistogram regionScanSize;
+  private final MetricHistogram regionScanTime;
   private final int hashCode;
 
   public MetricsRegionSourceImpl(MetricsRegionWrapper regionWrapper,
@@ -80,22 +82,25 @@ public class MetricsRegionSourceImpl implements MetricsRegionSource {
     String suffix = "Count";
 
     regionPutKey = regionNamePrefix + MetricsRegionServerSource.MUTATE_KEY + suffix;
-    regionPut = registry.getLongCounter(regionPutKey, 0L);
+    regionPut = registry.getCounter(regionPutKey, 0L);
 
     regionDeleteKey = regionNamePrefix + MetricsRegionServerSource.DELETE_KEY + suffix;
-    regionDelete = registry.getLongCounter(regionDeleteKey, 0L);
+    regionDelete = registry.getCounter(regionDeleteKey, 0L);
 
     regionIncrementKey = regionNamePrefix + MetricsRegionServerSource.INCREMENT_KEY + suffix;
-    regionIncrement = registry.getLongCounter(regionIncrementKey, 0L);
+    regionIncrement = registry.getCounter(regionIncrementKey, 0L);
 
     regionAppendKey = regionNamePrefix + MetricsRegionServerSource.APPEND_KEY + suffix;
-    regionAppend = registry.getLongCounter(regionAppendKey, 0L);
+    regionAppend = registry.getCounter(regionAppendKey, 0L);
 
     regionGetKey = regionNamePrefix + MetricsRegionServerSource.GET_KEY;
     regionGet = registry.newTimeHistogram(regionGetKey);
 
-    regionScanNextKey = regionNamePrefix + MetricsRegionServerSource.SCAN_NEXT_KEY;
-    regionScanNext = registry.newTimeHistogram(regionScanNextKey);
+    regionScanSizeKey = regionNamePrefix + MetricsRegionServerSource.SCAN_SIZE_KEY;
+    regionScanSize = registry.newSizeHistogram(regionScanSizeKey);
+
+    regionScanTimeKey = regionNamePrefix + MetricsRegionServerSource.SCAN_TIME_KEY;
+    regionScanTime = registry.newTimeHistogram(regionScanTimeKey);
 
     hashCode = regionWrapper.getRegionHashCode();
   }
@@ -125,9 +130,11 @@ public class MetricsRegionSourceImpl implements MetricsRegionSource {
       registry.removeMetric(regionIncrementKey);
       registry.removeMetric(regionAppendKey);
       registry.removeMetric(regionGetKey);
-      registry.removeMetric(regionScanNextKey);
+      registry.removeMetric(regionScanSizeKey);
+      registry.removeMetric(regionScanTimeKey);
       registry.removeHistogramMetrics(regionGetKey);
-      registry.removeHistogramMetrics(regionScanNextKey);
+      registry.removeHistogramMetrics(regionScanSizeKey);
+      registry.removeHistogramMetrics(regionScanTimeKey);
 
       regionWrapper = null;
     }
@@ -149,8 +156,13 @@ public class MetricsRegionSourceImpl implements MetricsRegionSource {
   }
 
   @Override
-  public void updateScan(long scanSize) {
-    regionScanNext.add(scanSize);
+  public void updateScanSize(long scanSize) {
+    regionScanSize.add(scanSize);
+  }
+
+  @Override
+  public void updateScanTime(long mills) {
+    regionScanTime.add(mills);
   }
 
   @Override
@@ -216,6 +228,22 @@ public class MetricsRegionSourceImpl implements MetricsRegionSource {
               regionNamePrefix + MetricsRegionServerSource.MEMSTORE_SIZE,
               MetricsRegionServerSource.MEMSTORE_SIZE_DESC),
           this.regionWrapper.getMemstoreSize());
+      mrb.addGauge(Interns.info(
+        regionNamePrefix + MetricsRegionServerSource.MAX_STORE_FILE_AGE,
+        MetricsRegionServerSource.MAX_STORE_FILE_AGE_DESC),
+        this.regionWrapper.getMaxStoreFileAge());
+      mrb.addGauge(Interns.info(
+        regionNamePrefix + MetricsRegionServerSource.MIN_STORE_FILE_AGE,
+        MetricsRegionServerSource.MIN_STORE_FILE_AGE_DESC),
+        this.regionWrapper.getMinStoreFileAge());
+      mrb.addGauge(Interns.info(
+        regionNamePrefix + MetricsRegionServerSource.AVG_STORE_FILE_AGE,
+        MetricsRegionServerSource.AVG_STORE_FILE_AGE_DESC),
+        this.regionWrapper.getAvgStoreFileAge());
+      mrb.addGauge(Interns.info(
+        regionNamePrefix + MetricsRegionServerSource.NUM_REFERENCE_FILES,
+        MetricsRegionServerSource.NUM_REFERENCE_FILES_DESC),
+        this.regionWrapper.getNumReferenceFiles());
       mrb.addGauge(Interns.info(
               regionNamePrefix + MetricsRegionServerSource.STOREFILE_SIZE,
               MetricsRegionServerSource.STOREFILE_SIZE_DESC),

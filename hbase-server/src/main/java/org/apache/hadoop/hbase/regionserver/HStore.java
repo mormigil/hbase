@@ -511,8 +511,8 @@ public class HStore implements Store {
     }
     if (ioe != null) {
       // close StoreFile readers
-      boolean evictOnClose = 
-          cacheConf != null? cacheConf.shouldEvictOnClose(): true; 
+      boolean evictOnClose =
+          cacheConf != null? cacheConf.shouldEvictOnClose(): true;
       for (StoreFile file : results) {
         try {
           if (file != null) file.closeReader(evictOnClose);
@@ -808,7 +808,7 @@ public class HStore implements Store {
           completionService.submit(new Callable<Void>() {
             @Override
             public Void call() throws IOException {
-              boolean evictOnClose = 
+              boolean evictOnClose =
                   cacheConf != null? cacheConf.shouldEvictOnClose(): true;
               f.closeReader(evictOnClose);
               return null;
@@ -1307,7 +1307,7 @@ public class HStore implements Store {
     // Fix reaching into Region to get the maxWaitForSeqId.
     // Does this method belong in Region altogether given it is making so many references up there?
     // Could be Region#writeCompactionMarker(compactionDescriptor);
-    WALUtil.writeCompactionMarker(this.region.getWAL(), this.region.getTableDesc(),
+    WALUtil.writeCompactionMarker(this.region.getWAL(), this.region.getReplicationScope(),
         this.region.getRegionInfo(), compactionDescriptor, this.region.getMVCC());
   }
 
@@ -1820,6 +1820,9 @@ public class HStore implements Store {
       assert !this.getRegionInfo().isMetaRegion();
       // Not split-able if we find a reference store file present in the store.
       if (hasReferences()) {
+        if (LOG.isTraceEnabled()) {
+          LOG.trace("Not splittable; has references: " + this);
+        }
         return null;
       }
       return this.storeEngine.getStoreFileManager().getSplitPoint();
@@ -1885,6 +1888,89 @@ public class HStore implements Store {
   @Override
   public int getStorefilesCount() {
     return this.storeEngine.getStoreFileManager().getStorefileCount();
+  }
+
+  @Override
+  public long getMaxStoreFileAge() {
+    long earliestTS = Long.MAX_VALUE;
+    for (StoreFile s: this.storeEngine.getStoreFileManager().getStorefiles()) {
+      StoreFile.Reader r = s.getReader();
+      if (r == null) {
+        LOG.warn("StoreFile " + s + " has a null Reader");
+        continue;
+      }
+      if (!s.isHFile()) {
+        continue;
+      }
+      long createdTS = s.getFileInfo().getCreatedTimestamp();
+      earliestTS = (createdTS < earliestTS) ? createdTS : earliestTS;
+    }
+    long now = EnvironmentEdgeManager.currentTime();
+    return now - earliestTS;
+  }
+
+  @Override
+  public long getMinStoreFileAge() {
+    long latestTS = 0;
+    for (StoreFile s: this.storeEngine.getStoreFileManager().getStorefiles()) {
+      StoreFile.Reader r = s.getReader();
+      if (r == null) {
+        LOG.warn("StoreFile " + s + " has a null Reader");
+        continue;
+      }
+      if (!s.isHFile()) {
+        continue;
+      }
+      long createdTS = s.getFileInfo().getCreatedTimestamp();
+      latestTS = (createdTS > latestTS) ? createdTS : latestTS;
+    }
+    long now = EnvironmentEdgeManager.currentTime();
+    return now - latestTS;
+  }
+
+  @Override
+  public long getAvgStoreFileAge() {
+    long sum = 0, count = 0;
+    for (StoreFile s: this.storeEngine.getStoreFileManager().getStorefiles()) {
+      StoreFile.Reader r = s.getReader();
+      if (r == null) {
+        LOG.warn("StoreFile " + s + " has a null Reader");
+        continue;
+      }
+      if (!s.isHFile()) {
+        continue;
+      }
+      sum += s.getFileInfo().getCreatedTimestamp();
+      count++;
+    }
+    if (count == 0) {
+      return 0;
+    }
+    long avgTS = sum / count;
+    long now = EnvironmentEdgeManager.currentTime();
+    return now - avgTS;
+  }
+
+  @Override
+  public long getNumReferenceFiles() {
+    long numRefFiles = 0;
+    for (StoreFile s : this.storeEngine.getStoreFileManager().getStorefiles()) {
+      if (s.isReference()) {
+        numRefFiles++;
+      }
+    }
+    return numRefFiles;
+  }
+
+  @Override
+  public long getNumHFiles() {
+    long numHFiles = 0;
+    for (StoreFile s : this.storeEngine.getStoreFileManager().getStorefiles()) {
+      if (s.isHFile()) {
+        numHFiles++;
+      }
+    }
+    return numHFiles;
   }
 
   @Override
@@ -2363,6 +2449,10 @@ public class HStore implements Store {
       // Clear the compactedfiles from the store file manager
       clearCompactedfiles(filesToRemove);
     }
+  }
+
+  @Override public void finalizeFlush() {
+    memstore.finalizeFlush();
   }
 
   private void clearCompactedfiles(final List<StoreFile> filesToRemove) throws IOException {

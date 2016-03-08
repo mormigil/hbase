@@ -24,7 +24,7 @@ import org.apache.hadoop.metrics2.MetricHistogram;
 import org.apache.hadoop.metrics2.MetricsCollector;
 import org.apache.hadoop.metrics2.MetricsRecordBuilder;
 import org.apache.hadoop.metrics2.lib.Interns;
-import org.apache.hadoop.metrics2.lib.MutableCounterLong;
+import org.apache.hadoop.metrics2.lib.MutableFastCounter;
 
 /**
  * Hadoop2 implementation of MetricsRegionServerSource.
@@ -43,15 +43,16 @@ public class MetricsRegionServerSourceImpl
   private final MetricHistogram incrementHisto;
   private final MetricHistogram appendHisto;
   private final MetricHistogram replayHisto;
-  private final MetricHistogram scanNextHisto;
+  private final MetricHistogram scanSizeHisto;
+  private final MetricHistogram scanTimeHisto;
 
-  private final MutableCounterLong slowPut;
-  private final MutableCounterLong slowDelete;
-  private final MutableCounterLong slowGet;
-  private final MutableCounterLong slowIncrement;
-  private final MutableCounterLong slowAppend;
-  private final MutableCounterLong splitRequest;
-  private final MutableCounterLong splitSuccess;
+  private final MutableFastCounter slowPut;
+  private final MutableFastCounter slowDelete;
+  private final MutableFastCounter slowGet;
+  private final MutableFastCounter slowIncrement;
+  private final MutableFastCounter slowAppend;
+  private final MutableFastCounter splitRequest;
+  private final MutableFastCounter splitSuccess;
 
   private final MetricHistogram splitTimeHisto;
   private final MetricHistogram flushTimeHisto;
@@ -84,7 +85,8 @@ public class MetricsRegionServerSourceImpl
     slowAppend = getMetricsRegistry().newCounter(SLOW_APPEND_KEY, SLOW_APPEND_DESC, 0L);
     
     replayHisto = getMetricsRegistry().newTimeHistogram(REPLAY_KEY);
-    scanNextHisto = getMetricsRegistry().newTimeHistogram(SCAN_NEXT_KEY);
+    scanSizeHisto = getMetricsRegistry().newSizeHistogram(SCAN_SIZE_KEY);
+    scanTimeHisto = getMetricsRegistry().newTimeHistogram(SCAN_TIME_KEY);
 
     splitTimeHisto = getMetricsRegistry().newTimeHistogram(SPLIT_KEY);
     flushTimeHisto = getMetricsRegistry().newTimeHistogram(FLUSH_KEY);
@@ -124,8 +126,13 @@ public class MetricsRegionServerSourceImpl
   }
 
   @Override
-  public void updateScannerNext(long scanSize) {
-    scanNextHisto.add(scanSize);
+  public void updateScanSize(long scanSize) {
+    scanSizeHisto.add(scanSize);
+  }
+
+  @Override
+  public void updateScanTime(long t) {
+    scanTimeHisto.add(t);
   }
 
   @Override
@@ -195,6 +202,14 @@ public class MetricsRegionServerSourceImpl
           .addGauge(Interns.info(STOREFILE_COUNT, STOREFILE_COUNT_DESC), rsWrap.getNumStoreFiles())
           .addGauge(Interns.info(MEMSTORE_SIZE, MEMSTORE_SIZE_DESC), rsWrap.getMemstoreSize())
           .addGauge(Interns.info(STOREFILE_SIZE, STOREFILE_SIZE_DESC), rsWrap.getStoreFileSize())
+          .addGauge(Interns.info(MAX_STORE_FILE_AGE, MAX_STORE_FILE_AGE_DESC),
+              rsWrap.getMaxStoreFileAge())
+          .addGauge(Interns.info(MIN_STORE_FILE_AGE, MIN_STORE_FILE_AGE_DESC),
+              rsWrap.getMinStoreFileAge())
+          .addGauge(Interns.info(AVG_STORE_FILE_AGE, AVG_STORE_FILE_AGE_DESC),
+              rsWrap.getAvgStoreFileAge())
+          .addGauge(Interns.info(NUM_REFERENCE_FILES, NUM_REFERENCE_FILES_DESC),
+              rsWrap.getNumReferenceFiles())
           .addGauge(Interns.info(RS_START_TIME_NAME, RS_START_TIME_DESC),
               rsWrap.getStartCode())
           .addCounter(Interns.info(TOTAL_REQUEST_COUNT, TOTAL_REQUEST_COUNT_DESC),

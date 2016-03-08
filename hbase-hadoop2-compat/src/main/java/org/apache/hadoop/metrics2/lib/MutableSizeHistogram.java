@@ -18,8 +18,6 @@
 
 package org.apache.hadoop.metrics2.lib;
 
-import java.util.concurrent.atomic.AtomicLongArray;
-
 import org.apache.hadoop.hbase.classification.InterfaceAudience;
 import org.apache.hadoop.metrics2.MetricsInfo;
 
@@ -28,30 +26,29 @@ import org.apache.hadoop.metrics2.MetricsInfo;
  */
 @InterfaceAudience.Private
 public class MutableSizeHistogram extends MutableRangeHistogram {
-  private final String rangeType = "SizeRangeCount";
-  private final long[] ranges = {10,100,1000,10000,100000,1000000,10000000,100000000};
-  private final AtomicLongArray rangeVals = new AtomicLongArray(getRange().length+1);
+  private final static String RANGE_TYPE = "SizeRangeCount";
+  private final static long[] RANGES = {10,100,1000,10000,100000,1000000,10000000,100000000};
 
   public MutableSizeHistogram(MetricsInfo info) {
     this(info.name(), info.description());
   }
 
   public MutableSizeHistogram(String name, String description) {
-    super(name, description);
+    this(name, description, RANGES[RANGES.length-2]);
+  }
+
+  public MutableSizeHistogram(String name, String description, long expectedMax) {
+    super(name, description, expectedMax);
   }
 
   @Override
   public String getRangeType() {
-    return rangeType;
+    return RANGE_TYPE;
   }
 
   @Override
-  public long[] getRange() {
-    return ranges;
+  public long[] getRanges() {
+    return RANGES;
   }
-  
-  @Override
-  public AtomicLongArray getRangeVals() {
-    return rangeVals;
-  }  
+
 }
